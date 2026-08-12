@@ -42,27 +42,28 @@
 | 依赖 | 用途 | 获取方式 |
 |---|---|---|
 | **Node.js** (≥ 14) | 运行 bridge | `apt install nodejs` 或官网 |
-| **Scan 引擎** | 2500 ELO 棋力 | 官网下载 `scan-engine` 二进制, 放入 `~/.scan/` |
-| **Bitbases** (可选) | 终局残局库, 深度 22+ | 官网下载, 解压到 `~/.scan/data/`, 配置 `bb-size=6` |
+| **Scan 引擎** | 2500 ELO 棋力 | ✅ **已包含在仓库 `bin/scan`** (Linux x86-64, 229KB), 复制到 `~/.scan/` 即可 |
+| **Bitbases** (可选) | 终局残局库, 深度 22+ | ⚠️ **太大无法放 GitHub** (2.7GB), 官网下载解压到 `~/.scan/data/`, 配置 `bb-size=6` |
 | **Hub GUI** (可选) | Scan 图形界面 | 官网 hub.jar, 需 Java 17 |
 
-> 没有 Scan 引擎时, 游戏自动降级为内置 JS 引擎 (~1900 ELO), 功能不受影响。
+> 引擎二进制 (Scan 3.1, Fabien Letouzey 免费软件) 已随仓库分发; bitbase 因体积 (2.7GB) 需单独下载。没有引擎时游戏自动降级为内置 JS 引擎 (~1900 ELO)。
 
 ---
 
 ## 🚀 快速开始
 
-### 1. 下载并安装 Scan 引擎
+### 1. 安装 Scan 引擎 (已包含在仓库)
 
 ```bash
 # 创建目录
 mkdir -p ~/.scan/data
 
-# 下载 scan-engine 二进制 (从 Scan 官网: http://hjetten.home.xs4all.nl/Scan/)
-# 放入 ~/.scan/ 并确保可执行
-chmod +x ~/.scan/scan-engine
+# 引擎二进制已在仓库 bin/scan (Linux x86-64, 229KB)
+cp bin/scan ~/.scan/scan
+chmod +x ~/.scan/scan
 
-# (可选) 下载 bitbases 到 ~/.scan/data/
+# (可选) 下载 bitbases (2.7GB, 残局库) 到 ~/.scan/data/
+# 从 Scan 官网: http://hjetten.home.xs4all.nl/Scan/ 下载后解压
 ```
 
 ### 2. 配置 scan.ini
@@ -145,6 +146,7 @@ international-checkers/
 ├── dxp-bridge.js                 # Scan 桥接服务 (Node.js)
 ├── scan-bridge-ctl               # bridge 控制脚本 (start/stop/status/log)
 ├── scan.ini.example              # Scan 引擎配置示例
+├── bin/scan                      # Scan 引擎二进制 (Linux x86-64, 229KB)
 └── README.md                     # 本文档
 ```
 
