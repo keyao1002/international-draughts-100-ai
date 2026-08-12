@@ -1,4 +1,4 @@
-# ♟️ International Checkers (国际跳棋 100 格) — Scan 引擎版
+# ♟️ 国际跳棋 100格 标准 AI训练 (International Draughts 100)
 
 一个基于 **FMJD 标准规则的国际跳棋 (10×10, 100 格)** 单文件 HTML 游戏, 内置强劲的 **Scan 引擎** (~2500 ELO, 通过本地 bridge 接入), 支持 10 级 AI 强度、自由摆子、实时评分分析。
 
