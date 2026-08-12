@@ -1,0 +1,8 @@
+# 大文件 / 本地数据
+*.bitbase
+*.bb
+data/
+hub/
+jdk/
+*.log
+.DS_Store

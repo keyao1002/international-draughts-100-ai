@@ -1,0 +1,29 @@
+#!/bin/bash
+# Scan bridge 手动启动/停止脚本
+# 用于不用 systemd socket activation 的场景
+case "$1" in
+  start)
+    pkill -f dxp-bridge 2>/dev/null
+    sleep 1
+    cd /home/le/.scan
+    nohup node /home/le/draughts/dxp-bridge.js 28753 \
+      >> /tmp/dxp-bridge.log 2>&1 &
+    echo "Bridge started, pid: $!"
+    sleep 2
+    ss -tln | grep 28753
+    ;;
+  stop)
+    pkill -f dxp-bridge
+    echo "Bridge stopped"
+    ;;
+  status)
+    pgrep -af dxp-bridge
+    ss -tln | grep 28753
+    ;;
+  log)
+    tail -20 /tmp/dxp-bridge.log
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|status|log}"
+    ;;
+esac
