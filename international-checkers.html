@@ -207,6 +207,14 @@ textarea:focus{outline:none;border-color:var(--accent)}
   font-family:monospace;
 }
 .square.dark .coord{color:rgba(255,255,255,0.25)}
+.board.setup-mode .square .coord{
+  font-size:13px;
+  font-weight:700;
+  color:rgba(0,0,0,0.7);
+}
+.board.setup-mode .square.dark .coord{color:rgba(255,255,255,0.85)}
+.board.setup-mode .square .ct{top:3px;left:4px}
+.board.setup-mode .square .cr{bottom:3px;right:4px}
 .square .ct{top:1px;left:2px}
 .square .cr{bottom:1px;right:2px}
 .square.selected{background:var(--hi-select) !important}
@@ -513,8 +521,20 @@ textarea:focus{outline:none;border-color:var(--accent)}
       <div style="margin-top:6px">
         <button id="setupStart" class="primary">从此局面开始</button>
       </div>
-      <div class="help-box">
-        <b>操作</b>: 左键放置当前类型 · 左键循环切换 · Shift+点击 切换 man/king · 右键 切换 king 状态
+      <div style="margin-top:6px">
+        <label style="margin-bottom:4px">批量摆子 (按颜色铺满空位)</label>
+        <div class="row">
+          <button id="setupFillWhite" style="background:var(--light);color:#1a1410;border-color:var(--border)">⬜ 填白子</button>
+          <button id="setupFillBlack" style="background:#3a2818;color:#f0e8d8;border-color:var(--border)">⬛ 填黑子</button>
+        </div>
+      </div>
+      <div style="margin-top:6px" class="row">
+        <button id="setupSolve" class="primary" style="background:var(--accent2);border-color:var(--accent2);color:#0a1a10">🤖 AI 自动解题</button>
+        <button id="setupSolveStop" style="display:none">停止</button>
+      </div>
+      <div class="help-box" style="margin-top:8px">
+        <b>解题模式</b>: 引擎自动执白/执黑交替走最佳手, 直到终局 / 平局 / 人类可接手位置。
+        <span id="solveProgress" style="color:var(--accent);font-family:monospace"></span>
       </div>
     </div>
     <div class="section" id="replayControls" style="display:none">
@@ -1228,6 +1248,7 @@ const boardEl = $('board');
 
 function renderBoard(){
   boardEl.innerHTML = '';
+  boardEl.classList.toggle('setup-mode', mode==='setup');
   let movablePieces = new Set();
   if((mode==='play' && turn===humanColor && !gameOver) || mode==='analyze'){
     const allMoves = legalMoves(board, turn);
@@ -1246,16 +1267,30 @@ function renderBoard(){
       // Edge coord labels (use view coords)
       const viewCol = flipped ? (BOARD_SIZE-1-c) : c;
       const viewRow = flipped ? (BOARD_SIZE-1-r) : r;
-      if(viewRow===0 && viewCol%2===0){
-        const span = document.createElement('span');
-        span.className = 'coord ct';
-        span.textContent = String.fromCharCode(97+viewCol);
-        sq.appendChild(span);
+      // 摆子模式: 跳过顶/左边缘锚点, 每格都有完整坐标 (下面)
+      if(mode !== 'setup'){
+        if(viewRow===0 && viewCol%2===0){
+          const span = document.createElement('span');
+          span.className = 'coord ct';
+          span.textContent = String.fromCharCode(97+viewCol);
+          sq.appendChild(span);
+        }
+        if(viewCol===0){
+          const span = document.createElement('span');
+          span.className = 'coord cr';
+          span.textContent = (viewRow+1);
+          sq.appendChild(span);
+        }
+      } else {
+        // 摆子模式: 不在白格标注; 顶行/左列锚点全部隐藏, 每格自有 1-50
       }
-      if(viewCol===0){
+      // 摆子模式: 可走空格右下角标 1-50 (与 boardToHub / 内置棋谱同序), 已摆子跳过
+      if(mode==='setup' && PLAYABLE(dr,dc) && !board[dr][dc]){
+        // 反推: n = r*5 + (c//2) + 1   (boardToHub 的反向公式)
+        const n = dr * 5 + (dc >> 1) + 1;
         const span = document.createElement('span');
         span.className = 'coord cr';
-        span.textContent = (viewRow+1);
+        span.textContent = n;
         sq.appendChild(span);
       }
       const p = board[dr][dc];
@@ -1649,6 +1684,23 @@ $('setupMan').onclick = ()=>{setupPiece.king=false;setSetupBtn($('setupMan'),tru
 $('setupKing').onclick = ()=>{setupPiece.king=true;setSetupBtn($('setupKing'),true);setSetupBtn($('setupMan'),false);};
 $('setupClear').onclick = ()=>{board = createEmptyBoard();renderBoard();};
 $('setupDefault').onclick = ()=>{board = initialBoard();renderBoard();};
+$('setupFillWhite').onclick = ()=>{
+  // 把所有可走空位填上白兵, 不覆盖已有任何棋子
+  for(let r=0;r<BOARD_SIZE;r++){
+    for(let c=0;c<BOARD_SIZE;c++){
+      if(PLAYABLE(r,c) && !board[r][c]) board[r][c] = {color:'w', king:false};
+    }
+  }
+  renderBoard();
+};
+$('setupFillBlack').onclick = ()=>{
+  for(let r=0;r<BOARD_SIZE;r++){
+    for(let c=0;c<BOARD_SIZE;c++){
+      if(PLAYABLE(r,c) && !board[r][c]) board[r][c] = {color:'b', king:false};
+    }
+  }
+  renderBoard();
+};
 $('setupStart').onclick = ()=>{
   turn = $('setupTurn').value==='white'?'w':'b';
   setMode('play');
@@ -1662,6 +1714,98 @@ $('setupStart').onclick = ()=>{
   renderBoard();
   if(turn !== humanColor) setTimeout(botMove, 200);
 };
+
+// --- 一键自动解题: 引擎轮流执白/执黑走最佳手 ---
+let solving = false;
+let solveTimer = null;
+let solveStepDelay = 350; // 每步间隔 (ms), 让眼睛跟得上
+
+function solveStop(reason){
+  if(!solving) return;
+  solving = false;
+  if(solveTimer){ clearTimeout(solveTimer); solveTimer = null; }
+  botThinking = false;
+  $('setupSolveStop').style.display = 'none';
+  $('setupSolve').style.display = '';
+  $('setupSolve').textContent = '🤖 AI 自动解题';
+  const prev = $('solveProgress').textContent;
+  $('solveProgress').textContent = reason ? ` · 已停止 (${reason})` : ` · 已停止 · ${prev}`;
+  $('botStatus').textContent = '';
+}
+
+function solveStep(){
+  if(!solving) return;
+  if(gameOver) return solveStop('终局');
+  if(checkGameOver()) return; // checkGameOver 内部会触发 endGame
+
+  botThinking = true;
+  $('botStatus').innerHTML = '<span class="thinking">🤔 引擎求解中...</span>';
+  $('solveProgress').textContent = ` · 第 ${moveLog.length + 1} 步 · 思考中...`;
+
+  const t0 = Date.now();
+  const stepImpl = () => {
+    const mv = botPickMove();
+    if(!mv){ botThinking = false; return solveStop('无子可走'); }
+    doMove(mv);
+    renderBoard();
+    updateStatus();
+    updateEval();
+    if(botStats){
+      $('solveProgress').textContent =
+        ` · 第 ${moveLog.length} 步 · d${botStats.depth} · ${botStats.score>=0?'+':''}${botStats.score}`;
+    }
+    botThinking = false;
+    if(checkGameOver()) return; // endGame 已触发
+    if(!solving) return;        // 用户中途停止
+    solveTimer = setTimeout(solveStep, solveStepDelay);
+  };
+  // 与既有异步路径一致: 优先 Scan 引擎, 失败回退 JS
+  if(typeof scanUseScan !== 'undefined' && scanUseScan && typeof scanGoThink === 'function'){
+    botMoveScan().then(() => {
+      if(!solving) return;
+      if(checkGameOver()) return;
+      if(botStats){
+        $('solveProgress').textContent =
+          ` · 第 ${moveLog.length} 步 · d${botStats.depth} · ${botStats.score>=0?'+':''}${botStats.score}`;
+      }
+      solveTimer = setTimeout(solveStep, solveStepDelay);
+    }).catch(e => {
+      console.warn('Solve: Scan 失败, 回退 JS:', e);
+      stepImpl();
+    });
+  } else {
+    // JS 引擎: 让 setTimeout 把控制权让给 UI
+    setTimeout(stepImpl, 30);
+  }
+}
+
+$('setupSolve').onclick = () => {
+  if(solving) return;
+  // 1. 摆子面板的当前局面当作起始局面 (默认白先手可由 setupTurn 切换)
+  turn = $('setupTurn').value === 'white' ? 'w' : 'b';
+  gameOver = false;
+  captured = {w:0,b:0};
+  historyList = []; moveLog = []; lastMove = null;
+  positionCounts = {}; halfmoveClock = 0;
+  closeModal();
+  // 临时把 humanColor 设为 turn, 避免 setMode('play') 末尾触发 setTimeout(botMove)
+  // 解题循环结束后用户切到对弈模式, humanColor 会从下拉框恢复
+  const savedHumanColor = humanColor;
+  humanColor = turn;
+  try { setMode('play'); } finally { humanColor = savedHumanColor; }
+  updateStatus();
+  updateEval();
+  renderBoard();
+
+  // 2. 进入解题循环
+  solving = true;
+  $('setupSolve').style.display = 'none';
+  $('setupSolveStop').style.display = '';
+  $('solveProgress').textContent = ' · 启动...';
+  // 立即跑第一步
+  solveStep();
+};
+$('setupSolveStop').onclick = () => solveStop('用户中止');
 
 // --- 棋谱演示 ---
 let replayMoves = [];
